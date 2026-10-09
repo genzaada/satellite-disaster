@@ -1,0 +1,1 @@
+"""Application Pydantic schemas package."""

@@ -1,4 +1,4 @@
-# Operating System
+# Operating System & File System Metadata
 .DS_Store
 .DS_Store?
 ._*
@@ -7,7 +7,7 @@
 ehthumbs.db
 Thumbs.db
 
-# Python
+# Python Runtimes & Caches
 __pycache__/
 *.py[cod]
 *$py.class
@@ -30,6 +30,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.mypy_cache/
+.ruff_cache/
 
 # Virtual Environments
 .venv/
@@ -47,7 +49,7 @@ secrets/
 *.pem
 *.key
 
-# Node / Frontend
+# Node.js & Frontend Build Outputs
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -59,28 +61,47 @@ dist/
 dist-ssr/
 *.local
 
-# IDE & Editors
+# IDEs & Editor Configuration
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 
-# Geospatial & Large Data Caches
+# Large Geospatial Datasets & Satellite Imagery Directories
 data/raw/
 data/processed/
 data/interim/
-*.tif
-*.tiff
-*.nc
-*.grib
-*.grib2
-*.hdf
-*.h5
-*.zip
-*.tar.gz
 *.SAFE/
 
-# Testing & Coverage
+# Heavy Satellite Imagery & Raster Formats within Data Directories
+data/**/*.tif
+data/**/*.tiff
+data/**/*.nc
+data/**/*.grib
+data/**/*.grib2
+data/**/*.hdf
+data/**/*.h5
+data/**/*.zip
+data/**/*.tar.gz
+
+# Trained Models & Machine Learning Checkpoints
+models/checkpoints/
+models/weights/
+models/**/*.pt
+models/**/*.pth
+models/**/*.onnx
+models/**/*.pkl
+models/**/*.joblib
+models/**/*.h5
+models/**/*.safetensors
+
+# Logs & Temporary Files
+logs/
+*.log
+tmp/
+temp/
+
+# Testing & Coverage Artifacts
 .coverage
 .coverage.*
 .pytest_cache/
