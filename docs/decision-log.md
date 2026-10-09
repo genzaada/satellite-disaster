@@ -85,6 +85,59 @@
 
 ---
 
+### ADR-006: Common Alerting Protocol (CAP v1.2) Separation & Operational Alert Tier Mapping
+* **Date:** 2026-10-09
+* **Status:** **Provisional Engineering Proposal**
+* **Context:** The system requires an alert representation that complies with open emergency standards (OASIS CAP v1.2) while presenting clear, intuitive alert tiers (Warning, Watch, Advisory) to human operators.
+* **Decision:**
+  - Decouple CAP v1.2 formal schema elements (`severity`, `urgency`, `certainty`, `msgType`) from synthesized presentation tiers (`Warning`, `Watch`, `Advisory`).
+  - Formal alert payloads will serialize raw CAP v1.2 attributes in a dedicated `cap_elements` dictionary, accompanied by an explicit `synthesized_tier` field.
+  - Physical triggering thresholds do not originate from CAP, but are grounded in hazard-specific literature.
+* **Consequences:** Guarantees interoperability with international civil defense alerting tools while maintaining user-friendly dashboard presentation.
+* **Supervisor State:** `PENDING_SUPERVISOR_REVIEW` (Proposed synthesis mapping flagged as provisional).
+
+---
+
+### ADR-007: Task-Appropriate Uncertainty and Sensor-Specific Freshness Policy
+* **Date:** 2026-10-09
+* **Status:** **Provisional Engineering Proposal**
+* **Context:** Non-continuous, multimodal spatial hazard tasks cannot be represented with universal Gaussian confidence intervals or uniform latency thresholds.
+* **Decision:**
+  - Enforce task-conditioned uncertainty representations: classification tasks report calibrated class posterior probabilities or uncalibrated decision scores; continuous index regressions report empirical residual bounds; detection tasks report sensor confidence flags.
+  - Enforce sensor-specific freshness policies: polar-orbiting SAR allows up to 12 days; polar-orbiting optical allows up to 14 days; active thermal fire allows up to 24 hours; atmospheric reanalysis allows up to 48 hours.
+  - Restrict optical cloud masking to optical products (Sentinel-2, Landsat); strictly suppress optical cloud masking on Sentinel-1 SAR backscatter.
+* **Consequences:** Eliminates unscientific statistical overclaiming and prevents misleading false-negative warnings.
+* **Supervisor State:** `PENDING_SUPERVISOR_REVIEW`.
+
+---
+
+### ADR-008: Selection of Retrospective Next-Day Wildfire Occurrence Classification as Initial Analytical Task
+* **Date:** 2026-10-09
+* **Status:** **Provisional Engineering Proposal**
+* **Context:** Phase 3 requires selecting one specific hazard and analytical task for empirical verification. Wildfire offers public, high-quality, open-access datasets (NASA FIRMS VIIRS 375m, ERA5-Land via Open-Meteo, Copernicus DEM GLO-30). However, the analytical formulation must be strictly separated from static susceptibility, real-time hotspot detection, and operational weather forecasting.
+* **Decision:**
+  - Select *Retrospective Next-Day Fire-Occurrence Classification* as the initial hazard task.
+  - Define the target variable $Y_{s,t} \in \{0, 1\}$ as satellite-detectable active vegetation fire occurrence in a $0.05^\circ \times 0.05^\circ$ cell $s$ on calendar date $t$, using categorical VIIRS confidence (`nominal`, `high`) and `type == 0` (presumed vegetation).
+  - Explicitly document zero detections as *unconfirmed negatives* due to diurnal overpass gaps, cloud/smoke attenuation, and sub-canopy masking.
+  - Establish a common analysis grid of $0.05^\circ \times 0.05^\circ$. Bilinear interpolation of $0.1^\circ$ ERA5-Land reanalysis is adopted strictly as a geometric sampling alignment convenience and does not increase native meteorological resolution.
+  - Establish pilot engineering criteria ($\le 30\,\text{MB}$ tabular storage cap, $\le 5\%$ missing weather tolerance) for local computational feasibility, not universal scientific standards.
+* **Phase 3.1, 3.2 & 3.3 Feasibility & Independent Audit Outcome (2026-10-09):**
+  - **ERA5-Land via Open-Meteo:** PASS across all 6 evidence levels. 504 consecutive hourly observations verified across 4 quadrants; 0 missing timestamps, 0.00% missing values, zero future-leakage verified. (Reanalysis explicitly distinguished from operational forecasts).
+  - **Copernicus DEM GLO-30:** PASS (Object & Header level). HTTP 200 confirmed on AWS S3 across 4 required tiles (`N21_E079`, `N21_E080`, `N22_E079`, `N22_E080`, $40\text{--}42\,\text{MB}$ each); TIFF magic 42 verified. Full raster decoding deferred to Phase 4.
+  - **NASA FIRMS (VIIRS 375m SP):** PASS across all 6 evidence levels. Authenticated queries using `VIIRS_SNPP_SP` across 3 partitioned intervals (March 15–28, 2023) retrieved 349 active fire records with 15 confirmed schema columns, categorical confidence (`'l'`, `'n'`, `'h'`), and 225 qualifying vegetation fire observations (`type == 0` and nominal/high confidence). Zero credentials exposed or logged.
+  - **Spatial Clustering & Corrected Buffer Audit (Phase 3.3.1):** 225 qualifying detections map to **173 unique positive cell-days** across **137 unique grid cells** (0.77% prevalence across $22,400$ total space-time cells).
+    - Pre-exclusion distribution: Q1 (NW): 57, Q2 (NE): 26, Q3 (SW): 53, Q4 (SE): 37.
+    - Design 1 (2-cell margin / ~20 km total buffer width across boundary): 21 positive cell-days inside buffer excised; 152 post-exclusion evaluation cases remaining (Q1: 46, Q2: 23, Q3: 48, Q4: 35). Reconciles strictly ($152 + 21 = 173$); zero cross-fold overlap.
+    - Design 2 (4-cell margin / 20 km each side / ~40 km total buffer width): 49 positive cell-days inside buffer excised; 124 post-exclusion evaluation cases remaining (Q1: 44, Q2: 10, Q3: 39, Q4: 31). Reconciles strictly ($124 + 49 = 173$); zero cross-fold overlap.
+    - Crucial finding: Under Design 2, only 10 positive cases remain in Q2, demonstrating that spatial holdout evaluation on a 14-day window is statistically underpowered. Spatial holdout remains strictly provisional.
+  - **Sensor Lifecycle Notice:** NASA announced Suomi-NPP VIIRS data delivery will **cease on November 1, 2026**. Operational pipeline forward continuity requires migrating to NOAA-20/21.
+  - **Transfer & Storage Audit:** $124,819\,\text{bytes}$ transferred total ($123,795\,\text{bytes}$ dataset payloads, $1,024\,\text{bytes}$ header probes); $0\,\text{bytes}$ retained on disk after cleanup (vastly within $25\,\text{MB}$ cap).
+  - **Lifecycle Status:** Datasets updated to `Feasibility Verified (Access & Schema Validated; Data Ready Pending Supervisor Review for Phase 4 Authorization)`. None marked `Data Ready` without formal supervisor sign-off.
+* **Consequences:** Provides a rigorous, testable foundation for Phase 4–6 without misleading claims regarding operational forecasting or label certainty.
+* **Supervisor State:** `PENDING_SUPERVISOR_REVIEW` (Evaluation partitioning and bounding box).
+
+---
+
 ## 2. Register of Pending Supervisor Decisions (`PENDING_SUPERVISOR_REVIEW`)
 
 | Item ID | Topic | Description | Status |
@@ -93,3 +146,7 @@
 | **SUP-02** | **Hazard Prioritization** | Formal sign-off on Tier-1 initial focus on Wildfire and Flood as the core capstone demonstration slice. | `PENDING_SUPERVISOR_REVIEW` |
 | **SUP-03** | **Geographic Bounding** | Academic guidance on selecting pilot regions (Indian sub-basins vs. international benchmark datasets). | `PENDING_SUPERVISOR_REVIEW` |
 | **SUP-04** | **Evaluation Benchmarks** | Academic agreement on target ML performance thresholds (e.g., target ROC-AUC, F1-score, or CSI). | `PENDING_SUPERVISOR_REVIEW` |
+| **SUP-05** | **CAP Alert Tier Synthesis** | Academic review of proposed synthesis mapping from CAP v1.2 elements to operational tiers (Warning, Watch, Advisory). | `PENDING_SUPERVISOR_REVIEW` |
+| **SUP-06** | **Physical Alert Thresholds** | Formal review and empirical calibration of provisional multi-hazard physical alert triggering thresholds. | `PENDING_SUPERVISOR_REVIEW` |
+| **SUP-07** | **Wildfire Module Selection** | Academic sign-off on selecting retrospective next-day wildfire occurrence classification (NASA FIRMS + ERA5-Land + Copernicus DEM) as the first end-to-end hazard pipeline. | `PENDING_SUPERVISOR_REVIEW` |
+| **SUP-08** | **Central India Bounding Box & Spatial Partitioning** | Academic review of the proposed Central India pilot bounding box ($21^\circ\text{--}23^\circ\text{N}, 79^\circ\text{--}81^\circ\text{E}$) and provisional 4-block spatial evaluation design with buffer zones (labeled provisional due to 14-day sample size limitations in Q2). | `PENDING_SUPERVISOR_REVIEW` |

@@ -15,19 +15,26 @@
 * **Provider:** NASA Earth Science Data and Information System (ESDIS) / LANCE.
 * **Canonical URL:** [https://earthdata.nasa.gov/earth-observation-data/near-real-time/firms](https://earthdata.nasa.gov/earth-observation-data/near-real-time/firms)
 * **Citation:** Schroeder, W., et al. (2014). The New VIIRS 375 m active fire detection product. *Remote Sensing of Environment*, 143, 85-96.
-* **Product Identifier:** `VNP14IMGTDL` (NRT VIIRS 375m) / `MCD14DL` (MODIS 1km).
+* **Product Identifier:** `VNP14IMGTDL` (Suomi-NPP VIIRS 375m) / `VJ114IMGTDL` (NOAA-20 VIIRS 375m) / `MCD14DL` (MODIS 1km).
 * **Data Type & Format:** Tabular vector point data (CSV, GeoJSON, SHP).
 * **Spatial & Temporal Resolution:**
-  - Spatial: 375 m pixel footprint (VIIRS I-Band) / 1 km (MODIS).
-  - Temporal: 3–12 hour latency; daily global coverage.
-* **Key Attributes / Schema:** `latitude`, `longitude`, `bright_ti4` (brightness temperature I-4), `scan`, `track`, `acq_date`, `acq_time`, `satellite`, `confidence` (`low`, `nominal`, `high` or numeric $0\text{--}100$), `frp` (Fire Radiative Power, MW), `daynight`.
-* **Access Method & Credentials:**
-  - Method: RESTful HTTP API / Earthdata Download.
-  - Credentials: Free NASA Earthdata account; `MAP_KEY` required for transactional API queries.
-  - Rate Limits: Up to 5,000 transactions/day per key (Standard FIRMS API).
-* **Licence & Redistribution:** NASA Open Data Policy (Free and open global distribution for research and operational use, with attribution).
-* **Storage Footprint & Ingestion Impact:** Very lightweight (~50–100 MB per annual regional pilot extract in CSV). Safe for local disk bounds.
-* **Operational Verification State:** `Documentation Reviewed — Access Not Tested (Pending Verification in Phase 3)`.
+  - Spatial: 375 m pixel footprint at nadir (VIIRS I-Band) / 1 km (MODIS).
+  - Temporal: 3–6 hour latency (NRT); 2 overpasses/satellite/day.
+* **Key Attributes / Schema:**
+  - `latitude`, `longitude` (WGS 84 degrees)
+  - `bright_ti4` (VIIRS I-4 brightness temp in Kelvin)
+  - `confidence` (**Categorical string: `'low'`, `'nominal'`, `'high'`** for VIIRS; numeric $0\text{--}100\%$ applies only to MODIS)
+  - `frp` (Fire Radiative Power in MW)
+  - `acq_date` (`YYYY-MM-DD`), `acq_time` (`HHMM` UTC)
+  - `type` (Integer: `0` = Presumed vegetation fire, `1` = Active volcano, `2` = Other static land source, `3` = Offshore detection)
+* **Label Validity & Observability Protocol:**
+  - Mandatory positive filter: `type == 0` (presumed vegetation fires) AND `confidence IN ('nominal', 'high')`.
+  - Cells with zero observed hotspots are treated as **unconfirmed negatives** due to diurnal overpass gaps and smoke/cloud obscuration.
+* **Access Method & Credentials:** RESTful HTTP API / Earthdata Download. Free `MAP_KEY` required for transactional API queries (up to 5,000 queries/day).
+* **Licence & Redistribution:** NASA Open Data Policy (Free and open global distribution for research with citation).
+* **Storage Footprint & Ingestion Impact:** Bounded pilot extract ($2^\circ \times 2^\circ$, 3 years) is ~5–15 MB CSV.
+* **Sensor Lifecycle & Long-Term Continuity Notice:** NASA has announced that forward data delivery for Suomi-NPP VIIRS products will **cease on November 1, 2026**. While Suomi-NPP remains valid for historical retrospective training (2012–2024), operational forward deployments must migrate to NOAA-20 (`VJ114IMGTDL`) and NOAA-21 (`VJ214IMGTDL`) products.
+* **Operational Verification State:** `Candidate Source, not fully verified (Feasibility Verified in Phase 3.2: 349 records retrieved, 225 qualifying vegetation fires, schema confirmed; Data Ready Pending Supervisor Review)`.
 
 ---
 
@@ -75,41 +82,41 @@
 ---
 
 ### DS-04: Copernicus Global Digital Elevation Model (GLO-30)
-* **Provider:** European Space Agency (ESA) / Airbus.
+* **Provider:** European Space Agency (ESA) / Airbus Defence and Space.
 * **Canonical URL:** [https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model](https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model)
 * **Citation:** Copernicus DEM User Handbook (2020), ESA Document.
 * **Product Identifier:** `COP-DEM-GLO-30-DGED`.
-* **Data Type & Format:** 32-bit floating point elevation raster (GeoTIFF / Cloud-Optimized GeoTIFF via OpenTopography / AWS Public Datasets).
+* **Data Type & Format:** 32-bit floating point elevation raster (Cloud-Optimized GeoTIFF via AWS Public Datasets / OpenTopography API).
 * **Spatial & Temporal Resolution:**
-  - Spatial: 30 m (1 arc-second).
-  - Temporal: Static baseline.
-* **Key Attributes / Derived Features:** Orthometric elevation ($z$ in meters above EGM2008 geoid); used to compute Slope, Aspect, Topographic Wetness Index (TWI), and Curvature.
-* **Access Method & Credentials:**
-  - Method: AWS S3 Public Bucket (`s3://copernicus-dem-30m/`) / OpenTopography API.
-  - Credentials: Open on AWS; API key for OpenTopography.
-* **Licence & Redistribution:** Free and open access for research and commercial applications under Copernicus terms.
-* **Storage Footprint & Ingestion Impact:** Static regional pilot tile is ~50–150 MB. Fits easily within workspace storage.
-* **Operational Verification State:** `Documentation Reviewed — Access Not Tested (Pending Verification in Phase 3)`.
+  - Spatial: 1 arc-second (~30 m at equator).
+  - Temporal: Static baseline (EGM2008 geoid).
+* **Tile Distribution Footprint:** Distributed in $1^\circ \times 1^\circ$ geographic tiles. A $2^\circ \times 2^\circ$ pilot region requires **exactly four tiles** (e.g. `N21_E079`, `N21_E080`, `N22_E079`, `N22_E080`).
+* **Key Attributes / Derived Features:** Orthometric elevation ($z$ in meters above geoid); used to derive Slope angle, Aspect, Curvature, and Terrain Ruggedness Index aggregated to common analysis grid.
+* **Access Method & Credentials:** AWS S3 Public Bucket (`s3://copernicus-dem-30m/`) / OpenTopography API. Open access; no credentials required on AWS bucket.
+* **Licence & Redistribution:** Free and open access for research under Copernicus terms.
+* **Storage Footprint & Ingestion Impact:** 4 compressed GeoTIFF tiles total ~75–100 MB. Fits easily within workspace bounds.
+* **Operational Verification State:** `Candidate Source, not fully verified (Object Availability & COG Header Verified on AWS S3; Full Raster Array Decode Deferred to Phase 4)`.
 
 ---
 
-### DS-05: ECMWF ERA5 & ERA5-Land Atmospheric Reanalysis
-* **Provider:** European Centre for Medium-Range Weather Forecasts (ECMWF) / Copernicus Climate Change Service (CDS).
-* **Canonical URL:** [https://cds.climate.copernicus.eu/](https://cds.climate.copernicus.eu/)
+### DS-05: ECMWF ERA5-Land Atmospheric Reanalysis (via Open-Meteo)
+* **Provider:** European Centre for Medium-Range Weather Forecasts (ECMWF) / Copernicus Climate Change Service (CDS), served via Open-Meteo Historical API.
+* **Canonical URL:** [https://open-meteo.com/en/docs/historical-weather-api](https://open-meteo.com/en/docs/historical-weather-api) & [https://cds.climate.copernicus.eu/](https://cds.climate.copernicus.eu/)
 * **Citation:** Hersbach, H., et al. (2020). The ERA5 global reanalysis. *Quarterly Journal of the Royal Meteorological Society*, 146(730), 1999-2049.
-* **Product Identifier:** `reanalysis-era5-single-levels` / `reanalysis-era5-land`.
-* **Data Type & Format:** Gridded multidimensional multidataset (NetCDF / GRIB).
+* **Product Identifier:** `era5_land` (0.1° atmospheric and land-surface reanalysis).
+* **Data Type & Format:** Tabular JSON / CSV / NetCDF.
 * **Spatial & Temporal Resolution:**
-  - Spatial: $0.25^\circ \times 0.25^\circ$ (~31 km, ERA5) / $0.1^\circ \times 0.1^\circ$ (~9 km, ERA5-Land).
-  - Temporal: Hourly, 1950 to present (latency ~5 days).
-* **Key Variables:** `2m_temperature`, `10m_u_component_of_wind`, `10m_v_component_of_wind`, `2m_dewpoint_temperature` (for Relative Humidity), `total_precipitation`, `volumetric_soil_water_layer_1`.
-* **Access Method & Credentials:**
-  - Method: CDS API (`cdsapi` Python package).
-  - Credentials: Free CDS account; API UID and API key in `~/.cdsapirc`.
-  - Quotas: Queued asynchronous processing. Processing queues can experience delays of minutes to hours during high load.
-* **Licence & Redistribution:** Copernicus Climate Change Service Licence (Free open access for all uses with attribution).
-* **Storage Footprint & Ingestion Impact:** NetCDF regional time-series extracts over 1–2 years are ~200–500 MB. Ingestion must use targeted bounding box subsets. Alternatively, Open-Meteo Historical Weather API (which mirrors ERA5) provides synchronous JSON REST queries for rapid pilot prototyping.
-* **Operational Verification State:** `Documentation Reviewed — Access Not Tested (Pending Verification in Phase 3)`.
+  - Spatial: Native $0.1^\circ \times 0.1^\circ$ (~9 km at equator).
+  - Temporal: Hourly time-series, 1950 to present.
+* **Analytical Resolution Alignment Notice:**
+  - Reanalysis is sampled to cell centroids on the $0.05^\circ$ common analysis grid via bilinear interpolation.
+  - **Important Limitation:** Bilinear interpolation is a geometric sampling convenience; it does **not** create sub-grid physical atmospheric detail or resolve microscale wind channeling.
+* **Scientific Status:** This data is a **retrospective historical reanalysis**, not an operational weather forecast.
+* **Key Variables:** `temperature_2m` ($^\circ\text{C}$), `relative_humidity_2m` ($\%$), `wind_speed_10m` ($\text{km/h}$), `precipitation` ($\text{mm}$), `surface_pressure` ($\text{hPa}$), `dew_point_2m` ($^\circ\text{C}$).
+* **Access Method & Credentials:** RESTful HTTP JSON API. Non-commercial research allows up to 10,000 daily API calls without authentication keys.
+* **Licence & Redistribution:** Creative Commons Attribution 4.0 International (CC-BY 4.0) matching ECMWF Copernicus licensing.
+* **Storage Footprint & Ingestion Impact:** Hourly aggregates over 3 years for pilot centroid points total ~15–30 MB in JSON.
+* **Operational Verification State:** `Candidate Source, not fully verified (Empirically Verified in Phase 3.2: 504/504 hrs continuous, 0 missing timestamps, 0.00% missing values; Full Pipeline Ingestion Deferred to Phase 4)`.
 
 ---
 
