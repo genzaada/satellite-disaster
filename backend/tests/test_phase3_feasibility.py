@@ -1,7 +1,10 @@
 """Unit tests for Phase 3 feasibility check logic and security hardening."""
 
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add project root to sys.path so we can import from scripts
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -136,48 +139,126 @@ def test_is_cell_in_buffer_margins():
     assert is_cell_in_buffer(24, 24, margin_cells=4) is False
 
 
-def test_spatial_partition_audit_reconciliation_and_overlap_invariants():
-    """Verify that buffer cases are actually excluded and reconciliation invariants hold strictly."""
-    from scripts.phase3_feasibility_check import compute_spatial_partition_audit
+@pytest.fixture
+def synthetic_firms_rows():
+    """Deterministic multi-quadrant synthetic observations with known cell mapping and buffer memberships.
 
-    # Synthesize test observations across 4 quadrants, including buffer and non-buffer cells
-    synthetic_rows = [
-        # Q1 deep (row 30, col 5) - not in buffer
+    Engineered for Central India [21.0-23.0 N, 79.0-81.0 E] at 0.05-deg resolution:
+    - Q1 deep: lat 22.52, lon 79.27 -> row 30, col 5
+    - Q1 in 2-cell buffer: lat 22.07, lon 79.27 -> row 21, col 5
+    - Q1 in 4-cell buffer: lat 22.17, lon 79.27 -> row 23, col 5
+    - Q2 deep: lat 22.52, lon 80.52 -> row 30, col 30
+    - Q2 in 2-cell buffer: lat 22.52, lon 80.02 -> row 30, col 20
+    - Q2 in 4-cell buffer: lat 22.52, lon 80.17 -> row 30, col 23
+    - Q3 deep: lat 21.27, lon 79.27 -> row 5, col 5
+    - Q3 in 2-cell buffer: lat 21.97, lon 79.27 -> row 19, col 5
+    - Q3 in 4-cell buffer: lat 21.82, lon 79.27 -> row 16, col 5
+    - Q4 deep: lat 21.27, lon 80.52 -> row 5, col 30
+    - Q4 in 2-cell buffer: lat 21.27, lon 79.97 -> row 5, col 19
+    - Q4 in 4-cell buffer: lat 21.27, lon 79.82 -> row 5, col 16
+    """
+    return [
+        # Q1 deep: 2 detections on same date (tests deduplication to 1 positive cell-day)
         {"latitude": "22.52", "longitude": "79.27", "acq_date": "2023-03-15", "type": "0", "confidence": "nominal"},
-        # Q1 in buffer row (row 21, col 5) - in buffer for margin=2 & 4
+        {"latitude": "22.53", "longitude": "79.28", "acq_date": "2023-03-15", "type": "0", "confidence": "high"},
+        # Q1 deep: 1 detection on different date (tests distinct positive cell-day in same cell)
+        {"latitude": "22.52", "longitude": "79.27", "acq_date": "2023-03-16", "type": "0", "confidence": "nominal"},
+        # Q1 in 2-cell buffer (row 21)
         {"latitude": "22.07", "longitude": "79.27", "acq_date": "2023-03-15", "type": "0", "confidence": "nominal"},
-        # Q2 deep (row 30, col 30) - not in buffer
+        # Q1 in 4-cell buffer (row 23)
+        {"latitude": "22.17", "longitude": "79.27", "acq_date": "2023-03-15", "type": "0", "confidence": "nominal"},
+
+        # Q2 deep
         {"latitude": "22.52", "longitude": "80.52", "acq_date": "2023-03-15", "type": "0", "confidence": "high"},
-        # Q2 in buffer col (row 30, col 20) - in buffer for margin=2 & 4
-        {"latitude": "22.52", "longitude": "80.02", "acq_date": "2023-03-16", "type": "0", "confidence": "nominal"},
-        # Q3 deep (row 5, col 5) - not in buffer
+        # Q2 in 2-cell buffer (col 20)
+        {"latitude": "22.52", "longitude": "80.02", "acq_date": "2023-03-15", "type": "0", "confidence": "nominal"},
+        # Q2 in 4-cell buffer (col 23)
+        {"latitude": "22.52", "longitude": "80.17", "acq_date": "2023-03-15", "type": "0", "confidence": "nominal"},
+
+        # Q3 deep
         {"latitude": "21.27", "longitude": "79.27", "acq_date": "2023-03-16", "type": "0", "confidence": "nominal"},
-        # Q4 deep (row 5, col 30) - not in buffer
+        # Q3 in 2-cell buffer (row 19)
+        {"latitude": "21.97", "longitude": "79.27", "acq_date": "2023-03-16", "type": "0", "confidence": "nominal"},
+        # Q3 in 4-cell buffer (row 16)
+        {"latitude": "21.82", "longitude": "79.27", "acq_date": "2023-03-16", "type": "0", "confidence": "nominal"},
+
+        # Q4 deep
         {"latitude": "21.27", "longitude": "80.52", "acq_date": "2023-03-17", "type": "0", "confidence": "nominal"},
-        # Q4 in buffer col (row 5, col 19) - in buffer for margin=2 & 4
-        {"latitude": "21.27", "longitude": "79.97", "acq_date": "2023-03-17", "type": "0", "confidence": "nominal"},
+        # Q4 in 2-cell buffer (col 20)
+        {"latitude": "21.27", "longitude": "80.02", "acq_date": "2023-03-17", "type": "0", "confidence": "nominal"},
+        # Q4 in 4-cell buffer (col 23)
+        {"latitude": "21.27", "longitude": "80.17", "acq_date": "2023-03-17", "type": "0", "confidence": "nominal"},
     ]
 
-    for margin in [2, 4]:
-        audit = compute_spatial_partition_audit(synthetic_rows, margin_cells=margin)
 
-        # 1. Total positive cell-days matches input cell-day count
-        assert audit["total_positive_cell_days"] == len(synthetic_rows)
-        # 2. Strict reconciliation invariant: pre[q] == post[q] + buf[q]
-        assert audit["reconciles"] is True
-        for q in ["Q1_NW", "Q2_NE", "Q3_SW", "Q4_SE"]:
-            assert audit["pre_exclusion_counts"][q] == audit["post_exclusion_counts"][q] + audit["buffer_excluded_counts"][q]
-        # 3. Overall reconciliation invariant: total_pre == total_post + total_buf
-        assert audit["total_positive_cell_days"] == audit["post_exclusion_total"] + audit["buffer_total_excluded"]
-        # 4. Zero cross-fold overlap
-        assert audit["has_cross_fold_overlap"] is False
-        for pair_name, count in audit["cross_fold_overlaps"].items():
-            assert count == 0
+def test_spatial_partition_audit_deterministic_fixture_reconciliation(synthetic_firms_rows):
+    """Verify deduplication, buffer exclusion, and reconciliation invariants strictly using synthetic data."""
+    from scripts.phase3_feasibility_check import compute_spatial_partition_audit
+
+    # 1. Total input rows is 14; with 2 co-located detections on same date, unique cell-days must equal 13
+    audit_margin2 = compute_spatial_partition_audit(synthetic_firms_rows, margin_cells=2)
+    assert audit_margin2["total_qualifying_records"] == 14
+    assert audit_margin2["total_positive_cell_days"] == 13
+    assert audit_margin2["unique_cells_count"] == 12
+
+    # Design 1 (margin_cells=2): rows/cols 18..21 in buffer
+    # Q1: 4 cell-days (1 buffer [row 21], 3 post)
+    # Q2: 3 cell-days (1 buffer [col 20], 2 post)
+    # Q3: 3 cell-days (1 buffer [row 19], 2 post)
+    # Q4: 3 cell-days (1 buffer [col 19], 2 post)
+    assert audit_margin2["pre_exclusion_counts"] == {"Q1_NW": 4, "Q2_NE": 3, "Q3_SW": 3, "Q4_SE": 3}
+    assert audit_margin2["buffer_excluded_counts"] == {"Q1_NW": 1, "Q2_NE": 1, "Q3_SW": 1, "Q4_SE": 1}
+    assert audit_margin2["buffer_total_excluded"] == 4
+    assert audit_margin2["post_exclusion_counts"] == {"Q1_NW": 3, "Q2_NE": 2, "Q3_SW": 2, "Q4_SE": 2}
+    assert audit_margin2["post_exclusion_total"] == 9
+    assert audit_margin2["reconciles"] is True
+    assert audit_margin2["has_cross_fold_overlap"] is False
+
+    # Design 2 (margin_cells=4): rows/cols 16..23 in buffer
+    # Q1: 4 cell-days (2 buffer [rows 21, 23], 2 post)
+    # Q2: 3 cell-days (2 buffer [cols 20, 23], 1 post)
+    # Q3: 3 cell-days (2 buffer [rows 19, 16], 1 post)
+    # Q4: 3 cell-days (2 buffer [cols 19, 16], 1 post)
+    audit_margin4 = compute_spatial_partition_audit(synthetic_firms_rows, margin_cells=4)
+    assert audit_margin4["total_positive_cell_days"] == 13
+    assert audit_margin4["unique_cells_count"] == 12
+    assert audit_margin4["pre_exclusion_counts"] == {"Q1_NW": 4, "Q2_NE": 3, "Q3_SW": 3, "Q4_SE": 3}
+    assert audit_margin4["buffer_excluded_counts"] == {"Q1_NW": 2, "Q2_NE": 2, "Q3_SW": 2, "Q4_SE": 2}
+    assert audit_margin4["buffer_total_excluded"] == 8
+    assert audit_margin4["post_exclusion_counts"] == {"Q1_NW": 2, "Q2_NE": 1, "Q3_SW": 1, "Q4_SE": 1}
+    assert audit_margin4["post_exclusion_total"] == 5
+    assert audit_margin4["reconciles"] is True
+    assert audit_margin4["has_cross_fold_overlap"] is False
 
 
+def test_spatial_partition_audit_empty_qualifying_rows():
+    """Verify safe behavior when qualifying records list is empty."""
+    from scripts.phase3_feasibility_check import compute_spatial_partition_audit
+
+    audit = compute_spatial_partition_audit([], margin_cells=2)
+    assert audit["total_qualifying_records"] == 0
+    assert audit["total_positive_cell_days"] == 0
+    assert audit["unique_cells_count"] == 0
+    assert audit["post_exclusion_total"] == 0
+    assert audit["buffer_total_excluded"] == 0
+    assert audit["reconciles"] is True
+    assert audit["has_cross_fold_overlap"] is False
+
+
+@pytest.mark.integration
 def test_spatial_partition_audit_authenticated_reproduction():
-    """Reproduce exact 173 unique cell-days, 137 cells, and quadrant reconciliation when FIRMS_MAP_KEY is present."""
+    """Explicit live NASA FIRMS integration verification.
+
+    Must never run implicitly during default unit tests.
+    Requires explicit invocation with RUN_LIVE_FIRMS_TESTS=1 and a configured FIRMS_MAP_KEY.
+    """
     import os
+    if os.getenv("RUN_LIVE_FIRMS_TESTS") != "1":
+        pytest.skip(
+            "Live NASA FIRMS integration test deselected by default. "
+            "To execute explicitly, run: RUN_LIVE_FIRMS_TESTS=1 pytest backend/tests -m integration"
+        )
+
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -186,7 +267,7 @@ def test_spatial_partition_audit_authenticated_reproduction():
 
     key = os.getenv("FIRMS_MAP_KEY")
     if not key:
-        return  # Skip live reproduction if environment key is not available
+        pytest.skip("FIRMS_MAP_KEY not configured in environment")
 
     import httpx
     from scripts.phase3_feasibility_check import (
